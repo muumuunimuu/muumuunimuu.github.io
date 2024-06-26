@@ -6,29 +6,63 @@
     <title>リアルタイム物体検知</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <style>
+        #canvas {
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+        }
+        #cameraSwitch {
+            margin-top: 10px;
+        }
+    </style>
 </head>
 <body>
     <h1>リアルタイム物体検知</h1>
-    <video id="video" width="640" height="480" autoplay></video>
-    <canvas id="canvas" width="640" height="480"></canvas>
+    <canvas id="canvas"></canvas>
+    <br>
+    <button id="cameraSwitch">カメラを切り替え</button>
+    <div id="error" style="color: red;"></div>
 
     <script>
-        const video = document.getElementById('video');
+        const video = document.createElement('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const errorDiv = document.getElementById('error');
+        const cameraSwitchBtn = document.getElementById('cameraSwitch');
+        let currentFacingMode = 'environment';
 
         // カメラの設定
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
+        function setupCamera() {
+            navigator.mediaDevices.getUserMedia({
+                video: { facingMode: currentFacingMode }
+            }).then(stream => {
                 video.srcObject = stream;
-            })
-            .catch(err => {
+                video.onloadedmetadata = () => {
+                    video.play();
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    runDetection();
+                };
+            }).catch(err => {
                 console.error("カメラの起動に失敗しました: ", err);
+                errorDiv.textContent = `カメラの起動エラー: ${err.name} - ${err.message}`;
             });
+        }
+
+        // カメラ切り替え
+        cameraSwitchBtn.onclick = () => {
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            setupCamera();
+        };
 
         // モデルの読み込みと検知の実行
         cocoSsd.load().then(model => {
-            setInterval(() => {
+            setupCamera();
+            function runDetection() {
                 model.detect(video).then(predictions => {
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -43,8 +77,12 @@
                         ctx.font = '16px Arial';
                         ctx.fillText(`${prediction.class} (${Math.round(prediction.score * 100)}%)`, x, y > 10 ? y - 5 : 10);
                     });
+                    requestAnimationFrame(runDetection);
                 });
-            }, 100);
+            }
+        }).catch(err => {
+            console.error("モデルの読み込みに失敗しました: ", err);
+            errorDiv.textContent = `モデル読み込みエラー: ${err.message}`;
         });
     </script>
 </body>
