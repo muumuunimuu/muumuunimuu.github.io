@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>リアルタイム物体検知</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+</head>
+<body>
+    <h1>リアルタイム物体検知</h1>
+    <video id="video" width="640" height="480" autoplay></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // カメラの設定
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(err => {
+                console.error("カメラの起動に失敗しました: ", err);
+            });
+
+        // モデルの読み込みと検知の実行
+        cocoSsd.load().then(model => {
+            setInterval(() => {
+                model.detect(video).then(predictions => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    predictions.forEach(prediction => {
+                        const [x, y, width, height] = prediction.bbox;
+                        ctx.strokeStyle = '#00FFFF';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(x, y, width, height);
+                        
+                        ctx.fillStyle = '#00FFFF';
+                        ctx.font = '16px Arial';
+                        ctx.fillText(`${prediction.class} (${Math.round(prediction.score * 100)}%)`, x, y > 10 ? y - 5 : 10);
+                    });
+                });
+            }, 100);
+        });
+    </script>
+</body>
+</html>
