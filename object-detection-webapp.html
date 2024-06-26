@@ -12,8 +12,14 @@
             max-width: 640px;
             height: auto;
         }
-        #cameraSwitch {
+        #cameraSwitch, #status, #error {
             margin-top: 10px;
+        }
+        #status {
+            color: blue;
+        }
+        #error {
+            color: red;
         }
     </style>
 </head>
@@ -22,18 +28,32 @@
     <canvas id="canvas"></canvas>
     <br>
     <button id="cameraSwitch">カメラを切り替え</button>
-    <div id="error" style="color: red;"></div>
+    <div id="status"></div>
+    <div id="error"></div>
 
     <script>
         const video = document.createElement('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const statusDiv = document.getElementById('status');
         const errorDiv = document.getElementById('error');
         const cameraSwitchBtn = document.getElementById('cameraSwitch');
         let currentFacingMode = 'environment';
+        let model;
+
+        // ステータス表示関数
+        function updateStatus(message) {
+            statusDiv.textContent = message;
+        }
+
+        // エラー表示関数
+        function showError(message) {
+            errorDiv.textContent = message;
+        }
 
         // カメラの設定
         function setupCamera() {
+            updateStatus("カメラを起動中...");
             navigator.mediaDevices.getUserMedia({
                 video: { facingMode: currentFacingMode }
             }).then(stream => {
@@ -42,11 +62,12 @@
                     video.play();
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
+                    updateStatus("カメラ起動完了。物体検知を開始します。");
                     runDetection();
                 };
             }).catch(err => {
                 console.error("カメラの起動に失敗しました: ", err);
-                errorDiv.textContent = `カメラの起動エラー: ${err.name} - ${err.message}`;
+                showError(`カメラの起動エラー: ${err.name} - ${err.message}`);
             });
         }
 
@@ -60,30 +81,48 @@
         };
 
         // モデルの読み込みと検知の実行
-        cocoSsd.load().then(model => {
-            setupCamera();
-            function runDetection() {
-                model.detect(video).then(predictions => {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    
-                    predictions.forEach(prediction => {
-                        const [x, y, width, height] = prediction.bbox;
-                        ctx.strokeStyle = '#00FFFF';
-                        ctx.lineWidth = 2;
-                        ctx.strokeRect(x, y, width, height);
-                        
-                        ctx.fillStyle = '#00FFFF';
-                        ctx.font = '16px Arial';
-                        ctx.fillText(`${prediction.class} (${Math.round(prediction.score * 100)}%)`, x, y > 10 ? y - 5 : 10);
-                    });
-                    requestAnimationFrame(runDetection);
-                });
+        async function loadModelAndDetect() {
+            try {
+                updateStatus("モデルを読み込み中...");
+                model = await cocoSsd.load();
+                updateStatus("モデル読み込み完了。カメラを起動します。");
+                setupCamera();
+            } catch (err) {
+                console.error("モデルの読み込みに失敗しました: ", err);
+                showError(`モデル読み込みエラー: ${err.message}`);
             }
-        }).catch(err => {
-            console.error("モデルの読み込みに失敗しました: ", err);
-            errorDiv.textContent = `モデル読み込みエラー: ${err.message}`;
-        });
+        }
+
+        function runDetection() {
+            if (!model) return;
+            model.detect(video).then(predictions => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                if (predictions.length === 0) {
+                    updateStatus("物体が検出されません");
+                } else {
+                    updateStatus(`${predictions.length}個の物体を検出`);
+                }
+
+                predictions.forEach(prediction => {
+                    const [x, y, width, height] = prediction.bbox;
+                    ctx.strokeStyle = '#00FFFF';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(x, y, width, height);
+                    
+                    ctx.fillStyle = '#00FFFF';
+                    ctx.font = '16px Arial';
+                    ctx.fillText(`${prediction.class} (${Math.round(prediction.score * 100)}%)`, x, y > 10 ? y - 5 : 10);
+                });
+                requestAnimationFrame(runDetection);
+            }).catch(err => {
+                console.error("物体検知中にエラーが発生しました: ", err);
+                showError(`物体検知エラー: ${err.message}`);
+            });
+        }
+
+        loadModelAndDetect();
     </script>
 </body>
 </html>
